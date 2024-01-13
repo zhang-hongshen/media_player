@@ -3,6 +3,8 @@ project(media_player)
 
 set(CMAKE_CXX_STANDARD 20)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_CONSTANT_MACROS")
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
         libavdevice
@@ -34,6 +36,9 @@ add_executable(${PROJECT_NAME} main.cpp
         audio_output.h
         avsync.cpp
         avsync.h
+        mp_state.cpp
+        mp_state.h
+        utils/format_convert.h
 )
 
 target_link_libraries(${PROJECT_NAME} PkgConfig::LIBAV)

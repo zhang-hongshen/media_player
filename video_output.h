@@ -6,36 +6,43 @@
 #define SIMPLEST_MEDIA_PLAYER_VIDEOOUTPUT_H
 
 extern "C"{
-#include "SDL.h"
+#include <SDL.h>
 };
 
 #include "avframe_queue.h"
 #include "avsync.h"
+#include "mp_state.h"
+
+struct VideoParam {
+    int width;
+    int height;
+    AVRational time_base;
+};
 
 class VideoOutput {
 public:
-    VideoOutput(std::shared_ptr<AVSync> sync, AVRational time_base, std::shared_ptr<AVFrameQueue> q, int video_width, int video_height);
+    VideoOutput(std::shared_ptr<AVFrameQueue> q, const VideoParam &param, std::shared_ptr<MPState> mp_state);
     ~VideoOutput();
     int Init();
-    int MainLoop();
+    void EventLoop();
 private:
     void RefreshLoopWaitEvent(SDL_Event *event);
     void Refresh(double *remainTime);
     int Render(const AVFrame* frame);
+    void Realease();
 private:
-    std::shared_ptr<AVSync> sync_;
-    AVRational time_base_;
     std::shared_ptr<AVFrameQueue> frame_queue_ = nullptr;
-    int video_width_ = 0;
-    int video_height_ = 0;
+    VideoParam param_;
+    std::shared_ptr<MPState> mp_state_;
 
     SDL_Rect rect;
     SDL_Window *window = nullptr;
     SDL_Renderer *renderer = nullptr;
     SDL_Texture *texture = nullptr;
     // video default refresh rate
-    constexpr static double REFRESH_RATE = 1 / 60;
+    constexpr static double REFRESH_RATE = 0.01;
 
+    void TogglePause();
 };
 
 

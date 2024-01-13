@@ -2,18 +2,30 @@
 // Created by 张鸿燊 on 9/1/2024.
 //
 #include <spdlog/spdlog.h>
+
 #include "video_output.h"
 
-VideoOutput::VideoOutput(std::shared_ptr<AVSync> sync, AVRational time_base, std::shared_ptr<AVFrameQueue> q, int video_width, int video_height):
-sync_(sync), time_base_(time_base), frame_queue_(q), video_width_(video_width), video_height_(video_height){
+VideoOutput::VideoOutput(std::shared_ptr<AVFrameQueue> q, const VideoParam &param, std::shared_ptr<MPState> mp_state):
+ frame_queue_(q), param_(param), mp_state_(mp_state){
 
 }
 
 VideoOutput::~VideoOutput() {
-    SDL_DestroyWindow(window);
-    SDL_DestroyTexture(texture);
-    SDL_DestroyRenderer(renderer);
+    Realease();
 }
+
+void VideoOutput::Realease() {
+    if(window) {
+        SDL_DestroyWindow(window);
+    }
+    if(texture) {
+        SDL_DestroyTexture(texture);
+    }
+    if(renderer) {
+        SDL_DestroyRenderer(renderer);
+    }
+}
+
 
 int VideoOutput::Init() {
     if(SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -33,7 +45,7 @@ int VideoOutput::Init() {
         window_flags |= SDL_WINDOW_OPENGL;
     }
     window = SDL_CreateWindow("ffmpeg player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                              video_width_, video_height_,  window_flags);
+                              param_.width, param_.height,  window_flags);
 
     if(!window) {
         spdlog::error("SDL_CreateWindow error, {}\n" ,SDL_GetError());
@@ -45,7 +57,7 @@ int VideoOutput::Init() {
         return -1;
     }
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING,
-                                video_width_, video_height_);
+                                param_.width, param_.height);
     if(!texture) {
         spdlog::error("SDL_CreateTexture error, {}\n" ,SDL_GetError());
         return -1;
@@ -53,17 +65,38 @@ int VideoOutput::Init() {
     return 0;
 }
 
-int VideoOutput::MainLoop() {
+void VideoOutput::EventLoop() {
     SDL_Event event;
     while(true) {
         RefreshLoopWaitEvent(&event);
         switch (event.type) {
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.sym) {
+                    case SDLK_m:
+                        mp_state_->ToggleMuted();
+                        break;
+                    case SDLK_UP:
+                        mp_state_->UpdateVolume(MPState::DEFAULT_VOLUME_STEP);
+                        break;
+                    case SDLK_DOWN:
+                        mp_state_->UpdateVolume(-MPState::DEFAULT_VOLUME_STEP);
+                        break;
+                    case SDLK_SPACE:
+                        mp_state_->TogglePaused();
+                        break;
+                    case SDLK_q:
+                        Realease();
+                        SDL_Quit();
+                        exit(0);
+                        break;
+                }
+                break;
             case SDL_QUIT:
-                return 0;
+                break;
         }
     }
-    return 0;
 }
+
 
 void VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
     double remainTime = 0;
@@ -73,7 +106,9 @@ void VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
             std::this_thread::sleep_for(std::chrono::milliseconds (int64_t(remainTime * 1000)));
         }
         remainTime = REFRESH_RATE;
-        Refresh(&remainTime);
+        if(!mp_state_->paused) {
+            Refresh(&remainTime);
+        }
         SDL_PumpEvents();
     }
 }
@@ -83,7 +118,7 @@ void VideoOutput::Refresh(double *remainTime) {
     if(!frame) {
         return;
     }
-    double diff = frame->pts * av_q2d(time_base_) - sync_->getClock();
+    double diff = frame->pts * av_q2d(param_.time_base) - mp_state_->GetClock();
     if(diff > 0) {
         *remainTime = std::min(*remainTime, diff);
         return;
@@ -110,10 +145,10 @@ int VideoOutput::Render(const AVFrame *frame) {
     SDL_RenderClear(renderer);
     int renderer_width, renderer_height;
     SDL_GetRendererOutputSize(renderer, &renderer_width, &renderer_height);
-    float scale = std::min(static_cast<float>(renderer_width) / static_cast<float>(video_width_),
-                           static_cast<float>(renderer_height) / static_cast<float>(video_height_));
-    rect.w = static_cast<int>(static_cast<float>(video_width_) * scale);
-    rect.h = static_cast<int>(static_cast<float>(video_height_) * scale);
+    float scale = std::min(static_cast<float>(renderer_width) / static_cast<float>(param_.width),
+                           static_cast<float>(renderer_height) / static_cast<float>(param_.height));
+    rect.w = static_cast<int>(static_cast<float>(param_.width) * scale);
+    rect.h = static_cast<int>(static_cast<float>(param_.height) * scale);
     rect.x = (renderer_width - rect.w) >> 1;
     rect.y = (renderer_height - rect.h) >> 1;
 

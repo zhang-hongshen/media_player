@@ -6,12 +6,13 @@
 #define SIMPLEST_MEDIA_PLAYER_AUDIOOUTPUT_H
 
 extern "C" {
-#include "libswresample/swresample.h"
-#include "SDL.h"
+#include <libswresample/swresample.h>
+#include <SDL.h>
 }
 
 #include "avframe_queue.h"
 #include "avsync.h"
+#include "mp_state.h"
 
 struct AudioParam {
 
@@ -19,20 +20,13 @@ struct AudioParam {
     AVSampleFormat format;
     int sample_rate;
     int frame_size;
-
-    AudioParam() = default;
-
-    AudioParam(AVChannelLayout channel_layout, AVSampleFormat format,
-               int sample_rate,int frame_size) :
-            channel_layout(channel_layout), format(format),
-            sample_rate(sample_rate), frame_size(frame_size)  {
-
-    }
+    AVRational time_base;
 };
+
 
 class AudioOutput {
 public:
-    AudioOutput(std::shared_ptr<AVSync> sync, AVRational time_base, std::shared_ptr<AVFrameQueue> q, const AudioParam &param);
+    AudioOutput(std::shared_ptr<AVFrameQueue> q, const AudioParam &param, std::shared_ptr<MPState> mp_state);
     ~AudioOutput();
     int Init();
 private:
@@ -42,11 +36,9 @@ private:
     int Resample(const AVFrame* frame);
     void SetSyncClock();
 private:
-    std::shared_ptr<AVSync> sync_;
-    AVRational time_base_;
     std::shared_ptr<AVFrameQueue> frame_queue_ = nullptr;
-    AudioParam src;
-    AudioParam dst;
+    AudioParam src, dst;
+    std::shared_ptr<MPState> mp_state_ = nullptr;
     enum {
         UNPAUSE = 0,
         PAUSE = 1

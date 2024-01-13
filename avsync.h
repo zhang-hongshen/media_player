@@ -13,11 +13,11 @@ public:
         EXTERNAL
     };
 public:
-    AVSync(SyncType type = EXTERNAL);
+    AVSync(SyncType type = AUDIO);
     ~AVSync();
-    void setClock(double pts, double time);
-    void setClock(double pts);
-    double getClock() const;
+    void SetClock(double pts, double time);
+    void SetClock(double pts);
+    double GetClock() const;
 
 private:
     SyncType type_ = AUDIO;

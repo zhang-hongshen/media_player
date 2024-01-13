@@ -8,9 +8,11 @@
 #include "decoder.h"
 #include "video_output.h"
 #include "audio_output.h"
+#include "mp_state.h"
 
-// ffmpeg needed
+#ifndef STDC_CONSTANT_MACROS
 #define __STDC_CONSTANT_MACROS
+#endif
 
 int main(int argc, char* argv[]) {
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S][%^%l%$][pid %t] %v");
@@ -73,24 +75,35 @@ int main(int argc, char* argv[]) {
     /**
      * Output
      */
-    std::shared_ptr<AVSync> syncer = std::make_shared<AVSync>(AVSync::AUDIO);
+    std::shared_ptr<MPState> mp_state = std::make_shared<MPState>();
     // init audio output
-    AudioParam param(audio_codec_param->ch_layout, static_cast<AVSampleFormat>(audio_codec_param->format),
-                     audio_codec_param->sample_rate, audio_codec_param->frame_size);
-    AudioOutput audio(syncer, audio_stream->time_base, audio_frame_queue, param);
+    AudioParam audio_param{};
+    audio_param.channel_layout = audio_codec_param->ch_layout;
+    audio_param.format = static_cast<AVSampleFormat>(audio_codec_param->format);
+    audio_param.sample_rate = audio_codec_param->sample_rate;
+    audio_param.frame_size = audio_codec_param->frame_size;
+    audio_param.time_base = audio_stream->time_base;
+
+    AudioOutput audio(audio_frame_queue, audio_param, mp_state);
     ret = audio.Init();
     if(ret < 0) {
         spdlog::error("audio output initialize error\n");
         return -1;
     }
     // init video output
-    VideoOutput video(syncer, video_stream->time_base, video_frame_queue, video_codec_param->width, video_codec_param->height);
+    VideoParam video_param{};
+    video_param.height = video_codec_param->height;
+    video_param.width = video_codec_param->width;
+    video_param.time_base = video_stream->time_base;
+
+
+    VideoOutput video(video_frame_queue, video_param, mp_state);
     ret = video.Init();
     if(ret < 0) {
         spdlog::error("video output initialize error\n");
         return -1;
     }
-    video.MainLoop();
+    video.EventLoop();
 
 
     // sleep to wait for thread finish
@@ -113,3 +126,4 @@ int main(int argc, char* argv[]) {
     SDL_Quit();
     return 0;
 }
+

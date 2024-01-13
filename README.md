@@ -1,5 +1,6 @@
 # media_player
 
+A simple media player with pause, volume adjustment, playback speed adjustment
 ## Dependencies
 
 | Library                           | Version |

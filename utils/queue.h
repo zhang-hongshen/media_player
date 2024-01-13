@@ -25,7 +25,6 @@ public:
 
         q_.push(val);
 
-        spdlog::debug("queue size {}\n", q_.size());
         cond_.notify_one();
 
         return 0;
@@ -44,8 +43,6 @@ public:
 
         val = q_.front();
         q_.pop();
-
-        spdlog::debug("queue size {}\n", q_.size());
 
         return 0;
     }

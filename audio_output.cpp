@@ -5,11 +5,12 @@
 
 #include <spdlog/spdlog.h>
 
-#include <utility>
+
+#include "utils/format_convert.h"
 
 
-AudioOutput::AudioOutput(std::shared_ptr<AVSync> sync, AVRational time_base, std::shared_ptr<AVFrameQueue> q, const AudioParam &param):
-        sync_(sync), time_base_(time_base), frame_queue_(q), src(param) {
+AudioOutput::AudioOutput(std::shared_ptr<AVFrameQueue> q, const AudioParam &param, std::shared_ptr<MPState> mp_state):
+    frame_queue_(q), src(param), mp_state_(mp_state) {
 }
 
 AudioOutput::~AudioOutput() {
@@ -19,40 +20,6 @@ AudioOutput::~AudioOutput() {
     delete buf;
 }
 
-SDL_AudioFormat GetSDLAudioFormat(enum AVSampleFormat format) {
-    switch (format) {
-    case AV_SAMPLE_FMT_U8:
-    case AV_SAMPLE_FMT_U8P:
-        return AUDIO_U8;
-    case AV_SAMPLE_FMT_S16:
-    case AV_SAMPLE_FMT_S16P:
-        return AUDIO_S16;
-    case AV_SAMPLE_FMT_S32:
-    case AV_SAMPLE_FMT_S32P:
-        return AUDIO_S32;
-    case AV_SAMPLE_FMT_FLT:
-    case AV_SAMPLE_FMT_FLTP:
-        return AUDIO_F32;
-    default:
-        return AV_SAMPLE_FMT_S16;
-    }
-}
-
-AVSampleFormat GetAVSampleFormat(SDL_AudioFormat format) {
-    switch (format) {
-        case AUDIO_U8:
-            return AV_SAMPLE_FMT_U8;
-        case AUDIO_S16:
-            return AV_SAMPLE_FMT_S16;
-        case AUDIO_S32:
-            return AV_SAMPLE_FMT_S32;
-        case AUDIO_F32:
-            return AV_SAMPLE_FMT_FLT;
-        default:
-            /* Unsupported */
-            return AV_SAMPLE_FMT_S16;
-    }
-}
 
 int AudioOutput::Init() {
     if(SDL_Init(SDL_INIT_AUDIO) != 0) {
@@ -80,6 +47,8 @@ int AudioOutput::Init() {
     dst.sample_rate = obtained.freq;
     av_channel_layout_default(&dst.channel_layout, src.channel_layout.nb_channels);
     dst.frame_size = src.frame_size;
+    dst.time_base = src.time_base;
+
     SDL_PauseAudio(UNPAUSE);
 
     spdlog::info("AudioOutput::Init() finished \n");
@@ -91,42 +60,50 @@ void AudioOutput::FillAudioPCM(void *userdata, Uint8 * stream, int len) {
     int ret;
     while(len > 0) {
         if(output->buf_index >= output->buf_size) {
-            output->buf_index = 0;
-            AVFrame *frame = output->frame_queue_->pop(10);
-            auto dst = output->dst;
-            if(!frame) {
+            if(output->mp_state_->paused) {
                 output->buf = nullptr;
                 output->buf_size = DEFAULT_BUF_SIZE;
             } else {
-                output->pts = frame->pts;
-                if(!output->swr_ctx_ && output->CheckIfNeedResample(frame)) {
-                    ret = output->InitSwrCtx(frame);
-                    if(ret < 0) {
-                        spdlog::error("InitSwrCtx error\n");
-                        return;
-                    }
-                }
-                if(!output->swr_ctx_) {
-                    auto audio_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples,
-                                                                 static_cast<AVSampleFormat>(frame->format), 1);
-                    av_fast_malloc(&output->buf1, reinterpret_cast<unsigned int *>(&output->buf_size1), audio_size);
-                    output->buf = output->buf1;
-                    output->buf_size = audio_size;
-                    memcpy(output->buf, frame->data[0], audio_size);
+                AVFrame *frame = output->frame_queue_->pop(10);
+                if(!frame) {
+                    output->buf = nullptr;
+                    output->buf_size = DEFAULT_BUF_SIZE;
                 } else {
-                    ret = output->Resample(frame);
-                    if(ret < 0) {
-                        spdlog::error("Resample error\n");
-                        return;
+                    output->pts = frame->pts;
+                    if(!output->swr_ctx_ && output->CheckIfNeedResample(frame)) {
+                        if(output->InitSwrCtx(frame) < 0) {
+                            spdlog::error("InitSwrCtx error\n");
+                            swr_free(&output->swr_ctx_);
+                            return;
+                        }
+                    }
+                    if(!output->swr_ctx_) {
+                        auto audio_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples,
+                                                                     static_cast<AVSampleFormat>(frame->format), 1);
+                        av_fast_malloc(&output->buf1, reinterpret_cast<unsigned int *>(&output->buf_size1), audio_size);
+                        output->buf = output->buf1;
+                        output->buf_size = audio_size;
+                        memcpy(output->buf, frame->data[0], audio_size);
+                    } else {
+                        ret = output->Resample(frame);
+                        if(ret < 0) {
+                            spdlog::error("Resample error\n");
+                            return;
+                        }
                     }
                 }
             }
+
+            output->buf_index = 0;
         }
         int readLen = std::min(len, output->buf_size - output->buf_index);
-        if(!output->buf) {
-            memset(stream, 0, readLen);
-        } else {
+        if(!output->mp_state_->muted && output->mp_state_->volume == SDL_MIX_MAXVOLUME && output->buf) {
             memcpy(stream, output->buf + output->buf_index, readLen);
+        } else {
+            memset(stream, 0, readLen);
+            if(!output->mp_state_->muted && output->buf) {
+                SDL_MixAudioFormat(stream, output->buf + output->buf_index, GetSDLAudioFormat(output->dst.format), readLen, output->mp_state_->volume);
+            }
         }
         len -= readLen;
         stream += readLen;
@@ -138,7 +115,7 @@ void AudioOutput::FillAudioPCM(void *userdata, Uint8 * stream, int len) {
 
 void AudioOutput::SetSyncClock() {
     if(AV_NOPTS_VALUE != pts) {
-        sync_->setClock(pts * av_q2d(time_base_));
+        mp_state_->SetClock(pts * av_q2d(dst.time_base));
     }
 }
 
