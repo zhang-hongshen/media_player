@@ -10,7 +10,7 @@ extern "C" {
 #include <SDL.h>
 }
 
-#include "avframe_queue.h"
+#include "frame_queue.h"
 #include "avsync.h"
 #include "mp_state.h"
 
@@ -26,7 +26,8 @@ struct AudioParam {
 
 class AudioOutput {
 public:
-    AudioOutput(std::shared_ptr<AVFrameQueue> q, const AudioParam &param, std::shared_ptr<MPState> mp_state);
+    AudioOutput(const std::shared_ptr<FrameQueue>& q, const AudioParam &param,
+                const std::shared_ptr<MPState>& mp_state);
     ~AudioOutput();
     int Init();
 private:
@@ -36,7 +37,7 @@ private:
     int Resample(const AVFrame* frame);
     void SetSyncClock();
 private:
-    std::shared_ptr<AVFrameQueue> frame_queue_ = nullptr;
+    std::shared_ptr<FrameQueue> frame_queue_ = nullptr;
     AudioParam src, dst;
     std::shared_ptr<MPState> mp_state_ = nullptr;
     enum {

@@ -19,20 +19,18 @@ AVPacketQueue::~AVPacketQueue() {
  * @param timeout
  * @return 0 if success, negative if failed
  */
-int AVPacketQueue::push(AVPacket* frame) {
-    AVPacket* e = av_packet_alloc();
-    av_packet_move_ref(e, frame);
-    return q_.push(e);
+int AVPacketQueue::push(std::shared_ptr<Packet> pkt) {
+    return q_.push(pkt);
 }
 
-AVPacket* AVPacketQueue::pop(int timeout) {
-    AVPacket *res = nullptr;
+std::shared_ptr<Packet> AVPacketQueue::pop(int timeout) {
+    std::shared_ptr<Packet> res = nullptr;
     q_.pop(res, timeout);
     return res;
 }
 
-AVPacket* AVPacketQueue::front() {
-    AVPacket *res = nullptr;
+std::shared_ptr<Packet> AVPacketQueue::front() {
+    std::shared_ptr<Packet> res = nullptr;
     int ret = q_.front(res);
     return res;
 }
@@ -42,15 +40,16 @@ size_t AVPacketQueue::size() {
     return q_.size();
 }
 
+void AVPacketQueue::clear() {
+    release();
+}
+
 void AVPacketQueue::release() {
     while (true) {
-        AVPacket *pkt = nullptr;
+        std::shared_ptr<Packet> pkt = nullptr;
         int ret = q_.pop(pkt, 10);
         if(-1 == ret) {
             break;
-        }
-        if(pkt) {
-            av_packet_free(&pkt);
         }
     }
 }

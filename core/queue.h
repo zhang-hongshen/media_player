@@ -10,9 +10,6 @@
 #include <condition_variable>
 #include <limits>
 
-#include "spdlog/spdlog.h"
-
-
 template<typename T>
 class Queue {
 public:
@@ -20,11 +17,19 @@ public:
     ~Queue() {};
 
     // only allow one thread to push
-    int push(T val) {
+    int push(const T& val) {
         std::lock_guard<std::mutex> lock(lock_);
 
         q_.push(val);
+        cond_.notify_one();
 
+        return 0;
+    }
+
+    int push(T&& val) {
+        std::lock_guard<std::mutex> lock(lock_);
+
+        q_.push(val);
         cond_.notify_one();
 
         return 0;

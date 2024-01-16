@@ -5,7 +5,8 @@
 
 #include "video_output.h"
 
-VideoOutput::VideoOutput(std::shared_ptr<AVFrameQueue> q, const VideoParam &param, std::shared_ptr<MPState> mp_state):
+VideoOutput::VideoOutput(const std::shared_ptr<FrameQueue>& q, const VideoParam &param,
+                         const std::shared_ptr<MPState>& mp_state):
  frame_queue_(q), param_(param), mp_state_(mp_state){
 
 }
@@ -40,13 +41,12 @@ int VideoOutput::Init() {
     Uint32 window_flags = SDL_WINDOW_RESIZABLE;
     if(platform.find("mac") != std::string::npos ) {
         window_flags |= SDL_WINDOW_METAL | SDL_WINDOW_ALLOW_HIGHDPI;
-        spdlog::debug("mac\n", platform);
     } else {
         window_flags |= SDL_WINDOW_OPENGL;
     }
+
     window = SDL_CreateWindow("ffmpeg player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                               param_.width, param_.height,  window_flags);
-
     if(!window) {
         spdlog::error("SDL_CreateWindow error, {}\n" ,SDL_GetError());
         return -1;
@@ -76,22 +76,36 @@ void VideoOutput::EventLoop() {
                         mp_state_->ToggleMuted();
                         break;
                     case SDLK_UP:
-                        mp_state_->UpdateVolume(MPState::DEFAULT_VOLUME_STEP);
+                        mp_state_->volume += MPState::DEFAULT_VOLUME_STEP;
                         break;
                     case SDLK_DOWN:
-                        mp_state_->UpdateVolume(-MPState::DEFAULT_VOLUME_STEP);
+                        mp_state_->volume -= MPState::DEFAULT_VOLUME_STEP;
                         break;
                     case SDLK_SPACE:
                         mp_state_->TogglePaused();
                         break;
+                    case SDLK_LEFT:
+                        mp_state_->PrePlayBackSpeed();
+                        break;
+                    case SDLK_RIGHT:
+                        mp_state_->NextPlayBackSpeed();
+                        break;
+                    case SDLK_a:
+                        mp_state_->Seek(mp_state_->GetClock() - MPState::DEFAULT_SEEK_STEP);
+                        spdlog::debug("mp_state_->seek_pts, {}\n" ,mp_state_->seek_pts);
+                        break;
+                    case SDLK_d:
+                        mp_state_->Seek(mp_state_->GetClock() + MPState::DEFAULT_SEEK_STEP);
+                        spdlog::debug("mp_state_->seek_pts, {}\n" ,mp_state_->seek_pts);
+                        break;
                     case SDLK_q:
                         Realease();
                         SDL_Quit();
-                        exit(0);
                         break;
                 }
                 break;
             case SDL_QUIT:
+                SDL_Quit();
                 break;
         }
     }
@@ -99,41 +113,48 @@ void VideoOutput::EventLoop() {
 
 
 void VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
-    double remainTime = 0;
+    double remaining_time = 0;
     SDL_PumpEvents();
     while(!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT)) {
-        if(remainTime > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds (int64_t(remainTime * 1000)));
+        if(remaining_time > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds (int64_t(remaining_time * 1000)));
         }
-        remainTime = REFRESH_RATE;
+        remaining_time = REFRESH_RATE;
         if(!mp_state_->paused) {
-            Refresh(&remainTime);
+            auto frame = frame_queue_->front();
+            if(!CheckIfNeedRefresh(frame)) {
+                continue;
+            }
+            AVFrame *av_frame = frame->av_frame_;
+            double diff = av_frame->pts * av_q2d(param_.time_base) - mp_state_->GetClock();
+            if(diff > 0) {
+                remaining_time = std::min(remaining_time, diff);
+                continue;
+            }
+            int ret = Refresh(av_frame);
+            if(0 != ret) {
+                spdlog::error("Refresh error\n");
+                return;
+            }
+            frame_queue_->pop(10);
         }
         SDL_PumpEvents();
     }
 }
 
-void VideoOutput::Refresh(double *remainTime) {
-    AVFrame *frame = frame_queue_->front();
+bool VideoOutput::CheckIfNeedRefresh(const std::shared_ptr<Frame>& frame) const {
     if(!frame) {
-        return;
+        return false;
     }
-    double diff = frame->pts * av_q2d(param_.time_base) - mp_state_->GetClock();
-    if(diff > 0) {
-        *remainTime = std::min(*remainTime, diff);
-        return;
+    if(frame->serial_ != mp_state_->serial) {
+        spdlog::info("video frame serial not equal, expected {}, actual {}\n", mp_state_->serial, frame->serial_);
+        return false;
     }
-
-    int ret = Render(frame);
-    if(0 != ret) {
-        spdlog::error("Render error\n");
-        return;
-    }
-    frame = frame_queue_->pop(10);
-    av_frame_free(&frame);
+    return true;
 }
 
-int VideoOutput::Render(const AVFrame *frame) {
+
+int VideoOutput::Refresh(const AVFrame *frame) {
     int ret = SDL_UpdateYUVTexture(texture, nullptr,
                                    frame->data[0], frame->linesize[0],
                                    frame->data[1], frame->linesize[1],

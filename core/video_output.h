@@ -9,7 +9,7 @@ extern "C"{
 #include <SDL.h>
 };
 
-#include "avframe_queue.h"
+#include "frame_queue.h"
 #include "avsync.h"
 #include "mp_state.h"
 
@@ -21,19 +21,20 @@ struct VideoParam {
 
 class VideoOutput {
 public:
-    VideoOutput(std::shared_ptr<AVFrameQueue> q, const VideoParam &param, std::shared_ptr<MPState> mp_state);
+    VideoOutput(const std::shared_ptr<FrameQueue>& q, const VideoParam &param,
+                const std::shared_ptr<MPState>& mp_state);
     ~VideoOutput();
     int Init();
     void EventLoop();
 private:
     void RefreshLoopWaitEvent(SDL_Event *event);
-    void Refresh(double *remainTime);
-    int Render(const AVFrame* frame);
+    bool CheckIfNeedRefresh(const std::shared_ptr<Frame>& frame) const;
+    int Refresh(const AVFrame* frame);
     void Realease();
 private:
-    std::shared_ptr<AVFrameQueue> frame_queue_ = nullptr;
+    std::shared_ptr<FrameQueue> frame_queue_ = nullptr;
     VideoParam param_;
-    std::shared_ptr<MPState> mp_state_;
+    std::shared_ptr<MPState> mp_state_ = nullptr;
 
     SDL_Rect rect;
     SDL_Window *window = nullptr;
@@ -41,8 +42,6 @@ private:
     SDL_Texture *texture = nullptr;
     // video default refresh rate
     constexpr static double REFRESH_RATE = 0.01;
-
-    void TogglePause();
 };
 
 

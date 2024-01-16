@@ -6,10 +6,11 @@
 #include <spdlog/spdlog.h>
 
 
-#include "utils/format_convert.h"
+#include "format_convert.h"
 
 
-AudioOutput::AudioOutput(std::shared_ptr<AVFrameQueue> q, const AudioParam &param, std::shared_ptr<MPState> mp_state):
+AudioOutput::AudioOutput(const std::shared_ptr<FrameQueue>& q, const AudioParam &param,
+                         const std::shared_ptr<MPState>& mp_state):
     frame_queue_(q), src(param), mp_state_(mp_state) {
 }
 
@@ -17,7 +18,7 @@ AudioOutput::~AudioOutput() {
     if(swr_ctx_) {
         swr_free(&swr_ctx_);
     }
-    delete buf;
+    delete buf, buf1;
 }
 
 
@@ -46,7 +47,7 @@ int AudioOutput::Init() {
     dst.format = GetAVSampleFormat(obtained.format);
     dst.sample_rate = obtained.freq;
     av_channel_layout_default(&dst.channel_layout, src.channel_layout.nb_channels);
-    dst.frame_size = src.frame_size;
+    dst.frame_size = obtained.samples;
     dst.time_base = src.time_base;
 
     SDL_PauseAudio(UNPAUSE);
@@ -64,28 +65,33 @@ void AudioOutput::FillAudioPCM(void *userdata, Uint8 * stream, int len) {
                 output->buf = nullptr;
                 output->buf_size = DEFAULT_BUF_SIZE;
             } else {
-                AVFrame *frame = output->frame_queue_->pop(10);
+                auto frame = output->frame_queue_->pop(10);
+                if(frame->serial_ != output->mp_state_->serial) {
+                    spdlog::info("audio frame serial not equal, expected {}, actual {}\n", output->mp_state_->serial, frame->serial_);
+                    return;
+                }
                 if(!frame) {
                     output->buf = nullptr;
                     output->buf_size = DEFAULT_BUF_SIZE;
                 } else {
-                    output->pts = frame->pts;
-                    if(!output->swr_ctx_ && output->CheckIfNeedResample(frame)) {
-                        if(output->InitSwrCtx(frame) < 0) {
+                    AVFrame *av_frame = frame->av_frame_;
+                    output->pts = av_frame->pts;
+                    if(!output->swr_ctx_ && output->CheckIfNeedResample(av_frame)) {
+                        if(output->InitSwrCtx(av_frame) < 0) {
                             spdlog::error("InitSwrCtx error\n");
                             swr_free(&output->swr_ctx_);
                             return;
                         }
                     }
                     if(!output->swr_ctx_) {
-                        auto audio_size = av_samples_get_buffer_size(nullptr, frame->ch_layout.nb_channels, frame->nb_samples,
-                                                                     static_cast<AVSampleFormat>(frame->format), 1);
+                        auto audio_size = av_samples_get_buffer_size(nullptr, av_frame->ch_layout.nb_channels, av_frame->nb_samples,
+                                                                     static_cast<AVSampleFormat>(av_frame->format), 1);
                         av_fast_malloc(&output->buf1, reinterpret_cast<unsigned int *>(&output->buf_size1), audio_size);
                         output->buf = output->buf1;
                         output->buf_size = audio_size;
-                        memcpy(output->buf, frame->data[0], audio_size);
+                        memcpy(output->buf, av_frame->data[0], audio_size);
                     } else {
-                        ret = output->Resample(frame);
+                        ret = output->Resample(av_frame);
                         if(ret < 0) {
                             spdlog::error("Resample error\n");
                             return;
@@ -108,9 +114,12 @@ void AudioOutput::FillAudioPCM(void *userdata, Uint8 * stream, int len) {
         len -= readLen;
         stream += readLen;
         output->buf_index += readLen;
+        output->SetSyncClock();
     }
 
-    output->SetSyncClock();
+    if(output->swr_ctx_) {
+        swr_free(&output->swr_ctx_);
+    }
 }
 
 void AudioOutput::SetSyncClock() {
@@ -121,8 +130,8 @@ void AudioOutput::SetSyncClock() {
 
 bool AudioOutput::CheckIfNeedResample(const AVFrame* frame) const{
     if(frame->format != dst.format
-       || frame->sample_rate != dst.sample_rate
-       || frame->ch_layout.nb_channels != dst.channel_layout.nb_channels) {
+        || frame->sample_rate != dst.sample_rate / mp_state_->GetPlayBackSpeed()
+        || frame->ch_layout.nb_channels != dst.channel_layout.nb_channels) {
         return true;
     }
     return false;
@@ -130,7 +139,7 @@ bool AudioOutput::CheckIfNeedResample(const AVFrame* frame) const{
 
 int AudioOutput::InitSwrCtx(const AVFrame* frame) {
     int ret = swr_alloc_set_opts2(&(swr_ctx_), &(dst.channel_layout),
-                              dst.format, dst.sample_rate, &(frame->ch_layout),
+                              dst.format, dst.sample_rate / mp_state_->GetPlayBackSpeed(), &(frame->ch_layout),
                               static_cast<AVSampleFormat>(frame->format),
                               frame->sample_rate, 0, nullptr);
     if(0 != ret) {
@@ -147,13 +156,13 @@ int AudioOutput::InitSwrCtx(const AVFrame* frame) {
 
 int AudioOutput::Resample(const AVFrame* frame) {
     int out_samples = frame->nb_samples * dst.sample_rate / frame->sample_rate + 256;
-    int out_bytes = av_samples_get_buffer_size(nullptr, dst.channel_layout.nb_channels,
+    int resampled_data_size = av_samples_get_buffer_size(nullptr, dst.channel_layout.nb_channels,
                                                out_samples, dst.format,  0);
-    if(out_bytes < 0) {
+    if(resampled_data_size < 0) {
         spdlog::error("av_samples_get_buffer_size error\n");
         return -1;
     }
-    av_fast_malloc(&buf1, reinterpret_cast<unsigned int *>(&buf_size1), out_bytes);
+    av_fast_malloc(&buf1, reinterpret_cast<unsigned int *>(&buf_size1), resampled_data_size);
     if(!buf1) {
         spdlog::error("av_fast_malloc error\n");
         return -1;
@@ -165,12 +174,12 @@ int AudioOutput::Resample(const AVFrame* frame) {
         return -1;
     }
     buf = buf1;
-    out_bytes = av_samples_get_buffer_size(nullptr, dst.channel_layout.nb_channels, out_samples,
+    resampled_data_size = av_samples_get_buffer_size(nullptr, dst.channel_layout.nb_channels, out_samples,
                                            dst.format, 1);
-    if(out_bytes < 0) {
+    if(resampled_data_size < 0) {
         spdlog::error("av_samples_get_buffer_size error\n");
         return -1;
     }
-    buf_size = out_bytes;
+    buf_size = resampled_data_size;
     return 0;
 }

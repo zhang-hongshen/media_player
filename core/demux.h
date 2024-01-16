@@ -10,12 +10,16 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
-#include "utils/thread.h"
+#include "thread.h"
 #include "avpacket_queue.h"
+#include "mp_state.h"
+#include "decoder.h"
 
 class Demux : public Thread {
 public:
-    Demux(std::shared_ptr<AVPacketQueue> video_pkt_queue, std::shared_ptr<AVPacketQueue> audio_pkt_queue);
+    Demux(const std::shared_ptr<AVPacketQueue>& video_pkt_queue,
+          const std::shared_ptr<AVPacketQueue>& audio_pkt_queue,
+          const std::shared_ptr<MPState>& mp_state, Decoder *video_decoder, Decoder *audio_decoer);
     ~Demux() override;
     int Init(const char *url);
     int Start();
@@ -27,6 +31,9 @@ protected:
 private:
     std::shared_ptr<AVPacketQueue> video_pkt_queue_ = nullptr;
     std::shared_ptr<AVPacketQueue> audio_pkt_queue_ = nullptr;
+    std::shared_ptr<MPState> mp_state_ = nullptr;
+    Decoder *video_decoder_, *audio_decoder_;
+
     AVFormatContext* format_ctx_ = nullptr;
     int video_stream_index_ = -1;
     int audio_stream_index_ = -1;

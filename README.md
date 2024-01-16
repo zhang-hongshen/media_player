@@ -22,3 +22,15 @@ cd cmake-build
 # replace video_filepath with yours
 ./media_player ${video_filepath}
 ```
+
+## Usage
+| Keycode | Role                             |
+|---------|----------------------------------|
+| q       | exit                             |
+| space   | pause/resume                     |
+| m       | mute/unmute                      |
+| ↑ / ↓   | increase/decrease volume         |
+| ← / →   | increase/decrease playback speed |
+
+## Progress Map
+![img.png](img.png)

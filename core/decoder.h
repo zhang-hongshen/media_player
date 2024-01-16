@@ -10,23 +10,26 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
-#include "utils/thread.h"
+#include "thread.h"
 #include "avpacket_queue.h"
-#include "avframe_queue.h"
+#include "frame_queue.h"
 
 class Decoder: public Thread {
 public:
-    Decoder(std::shared_ptr<AVPacketQueue> pkt_queue, std::shared_ptr<AVFrameQueue> frame_queue);
+    Decoder(const std::shared_ptr<AVPacketQueue>& pkt_queue,
+            const std::shared_ptr<FrameQueue>& frame_queue, int* serial);
     ~Decoder() override;
     int Init(AVCodecParameters *param);
     int Start();
     int Stop();
+    void ClearFrameQueue();
+    void FlushCodecBuffer();
 protected:
     int Run() override;
 private:
     std::shared_ptr<AVPacketQueue> pkt_queue_ = nullptr;
-    std::shared_ptr<AVFrameQueue> frame_queue_ = nullptr;
-
+    std::shared_ptr<FrameQueue> frame_queue_ = nullptr;
+    int* serial_ = nullptr;
     AVCodecContext *codec_ctx_ = nullptr;
 };
 

@@ -5,8 +5,9 @@
 
 #include "decoder.h"
 
-Decoder::Decoder(std::shared_ptr<AVPacketQueue> pkt_queue, std::shared_ptr<AVFrameQueue> frame_queue):
-        pkt_queue_(pkt_queue), frame_queue_(frame_queue) {
+Decoder::Decoder(const std::shared_ptr<AVPacketQueue>& pkt_queue,
+                 const std::shared_ptr<FrameQueue>& frame_queue, int* serial):
+        pkt_queue_(pkt_queue), frame_queue_(frame_queue), serial_(serial) {
 
 }
 
@@ -57,16 +58,15 @@ int Decoder::Stop() {
 }
 
 int Decoder::Run() {
-    AVFrame* frame = av_frame_alloc();
+    AVFrame* av_frame = av_frame_alloc();
     while(Thread::EXIT != abort_) {
-        AVPacket* pkt = pkt_queue_->front();
+        auto pkt = pkt_queue_->front();
         if(!pkt) {
             continue;
         }
-        int ret = avcodec_send_packet(codec_ctx_, pkt);
+        int ret = avcodec_send_packet(codec_ctx_, pkt->av_packet_);
         if(0 == ret) {
-            pkt = pkt_queue_->pop(10);
-            av_packet_free(&pkt);
+            pkt_queue_->pop(10);
         } else {
             spdlog::error("avcodec_send_packet error, {}\n", av_err2str(ret));
             if(AVERROR(EAGAIN) != ret) {
@@ -74,7 +74,7 @@ int Decoder::Run() {
             }
         }
         while(true) {
-            ret = avcodec_receive_frame(codec_ctx_, frame);
+            ret = avcodec_receive_frame(codec_ctx_, av_frame);
             if(0 != ret) {
                 if(AVERROR_EOF == ret) {
                     abort_ = Thread::EXIT;
@@ -82,11 +82,21 @@ int Decoder::Run() {
                 spdlog::warn("avcodec_receive_frame error, {}\n", av_err2str(ret));
                 break;
             }
-            frame_queue_->push(frame);
+            frame_queue_->push(std::make_shared<Frame>(av_frame, *serial_));
         }
     }
-    av_frame_free(&frame);
+    av_frame_free(&av_frame);
     spdlog::info("Decoder::run() finished \n");
     abort_ = Thread::EXIT;
     return 0;
+}
+
+void Decoder::ClearFrameQueue() {
+    frame_queue_->clear();
+}
+
+void Decoder::FlushCodecBuffer() {
+    if(codec_ctx_) {
+        avcodec_flush_buffers(codec_ctx_);
+    }
 }

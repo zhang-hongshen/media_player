@@ -1,14 +1,12 @@
-#include <queue>
-
 #include <spdlog/spdlog.h>
 
-#include "avpacket_queue.h"
-#include "avframe_queue.h"
-#include "demux.h"
-#include "decoder.h"
-#include "video_output.h"
-#include "audio_output.h"
-#include "mp_state.h"
+#include "core/avpacket_queue.h"
+#include "core/frame_queue.h"
+#include "core/demux.h"
+#include "core/decoder.h"
+#include "core/video_output.h"
+#include "core/audio_output.h"
+#include "core/mp_state.h"
 
 #ifndef STDC_CONSTANT_MACROS
 #define __STDC_CONSTANT_MACROS
@@ -22,10 +20,16 @@ int main(int argc, char* argv[]) {
     /**
      * Demux
      */
+    std::shared_ptr<MPState> mp_state = std::make_shared<MPState>();
     std::shared_ptr<AVPacketQueue> video_pkt_queue = std::make_shared<AVPacketQueue>();
     std::shared_ptr<AVPacketQueue> audio_pkt_queue = std::make_shared<AVPacketQueue>();
+    std::shared_ptr<FrameQueue> video_frame_queue = std::make_shared<FrameQueue>();
+    std::shared_ptr<FrameQueue> audio_frame_queue = std::make_shared<FrameQueue>();
 
-    Demux demux(video_pkt_queue, audio_pkt_queue);
+    Decoder video_decoder(video_pkt_queue, video_frame_queue, &mp_state->serial);
+    Decoder audio_decoder(audio_pkt_queue, audio_frame_queue, &mp_state->serial);
+
+    Demux demux(video_pkt_queue, audio_pkt_queue, mp_state, &video_decoder, &audio_decoder);
     int ret = demux.Init(url);
     if(ret < 0) {
         spdlog::error("demux initialize error\n");
@@ -41,8 +45,6 @@ int main(int argc, char* argv[]) {
      * Decode
      */
     // video decode
-    std::shared_ptr<AVFrameQueue> video_frame_queue = std::make_shared<AVFrameQueue>();
-    Decoder video_decoder(video_pkt_queue, video_frame_queue);
     auto video_stream = demux.VideoStream();
     auto video_codec_param = video_stream->codecpar;
     ret = video_decoder.Init(video_codec_param);
@@ -55,10 +57,7 @@ int main(int argc, char* argv[]) {
         spdlog::error("video decode thread start error\n");
         return -1;
     }
-
     // audio decode
-    std::shared_ptr<AVFrameQueue> audio_frame_queue = std::make_shared<AVFrameQueue>();
-    Decoder audio_decoder(audio_pkt_queue, audio_frame_queue);
     auto audio_stream = demux.AudioStream();
     auto audio_codec_param = audio_stream->codecpar;
     ret = audio_decoder.Init(audio_codec_param);
@@ -75,7 +74,6 @@ int main(int argc, char* argv[]) {
     /**
      * Output
      */
-    std::shared_ptr<MPState> mp_state = std::make_shared<MPState>();
     // init audio output
     AudioParam audio_param{};
     audio_param.channel_layout = audio_codec_param->ch_layout;
@@ -96,7 +94,6 @@ int main(int argc, char* argv[]) {
     video_param.width = video_codec_param->width;
     video_param.time_base = video_stream->time_base;
 
-
     VideoOutput video(video_frame_queue, video_param, mp_state);
     ret = video.Init();
     if(ret < 0) {
@@ -105,8 +102,9 @@ int main(int argc, char* argv[]) {
     }
     video.EventLoop();
 
-
-    // sleep to wait for thread finish
+    /**
+     * Waiting for decoding
+     */
     ret = demux.Stop();
     if(ret < 0) {
         spdlog::error("demux stop error\n");
@@ -123,7 +121,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    SDL_Quit();
     return 0;
 }
+
 

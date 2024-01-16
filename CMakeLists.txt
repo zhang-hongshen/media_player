@@ -6,39 +6,23 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_CONSTANT_MACROS")
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
-        libavdevice
-        libavfilter
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
         libavformat
         libavcodec
         libswresample
-        libswscale
         libavutil
+)
+
+pkg_check_modules(OTHER REQUIRED IMPORTED_TARGET
         SDL2
         spdlog
 )
 
-add_executable(${PROJECT_NAME} main.cpp
-        avframe_queue.cpp
-        avframe_queue.h
-        avpacket_queue.cpp
-        avpacket_queue.h
-        utils/thread.cpp
-        utils/thread.h
-        demux.cpp
-        demux.h
-        utils/queue.h
-        decoder.cpp
-        decoder.h
-        video_output.cpp
-        video_output.h
-        audio_output.cpp
-        audio_output.h
-        avsync.cpp
-        avsync.h
-        mp_state.cpp
-        mp_state.h
-        utils/format_convert.h
-)
+add_subdirectory(core)
 
-target_link_libraries(${PROJECT_NAME} PkgConfig::LIBAV)
+add_executable(${PROJECT_NAME} main.cpp)
+
+target_link_libraries(${PROJECT_NAME}
+        PkgConfig::FFMPEG
+        PkgConfig::OTHER
+        core)

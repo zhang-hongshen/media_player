@@ -17,7 +17,9 @@ Thread::~Thread(){
 int Thread::Stop() {
     while(Thread::EXIT != abort_);
     if(thread) {
-        thread->join();
+        if(thread->joinable()) {
+            thread->join();
+        }
         delete thread;
         thread = nullptr;
     }
