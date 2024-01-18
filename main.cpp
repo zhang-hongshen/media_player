@@ -21,10 +21,10 @@ int main(int argc, char* argv[]) {
      * Demux
      */
     std::shared_ptr<MPState> mp_state = std::make_shared<MPState>();
-    std::shared_ptr<AVPacketQueue> video_pkt_queue = std::make_shared<AVPacketQueue>();
-    std::shared_ptr<AVPacketQueue> audio_pkt_queue = std::make_shared<AVPacketQueue>();
-    std::shared_ptr<FrameQueue> video_frame_queue = std::make_shared<FrameQueue>();
-    std::shared_ptr<FrameQueue> audio_frame_queue = std::make_shared<FrameQueue>();
+    std::shared_ptr<AVPacketQueue> video_pkt_queue = std::make_shared<AVPacketQueue>(512);
+    std::shared_ptr<AVPacketQueue> audio_pkt_queue = std::make_shared<AVPacketQueue>(512);
+    std::shared_ptr<FrameQueue> video_frame_queue = std::make_shared<FrameQueue>(512);
+    std::shared_ptr<FrameQueue> audio_frame_queue = std::make_shared<FrameQueue>(512);
 
     Decoder video_decoder(video_pkt_queue, video_frame_queue, &mp_state->serial);
     Decoder audio_decoder(audio_pkt_queue, audio_frame_queue, &mp_state->serial);

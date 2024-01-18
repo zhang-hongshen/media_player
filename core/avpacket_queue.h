@@ -30,7 +30,7 @@ struct Packet {
 
 class AVPacketQueue{
 public:
-    AVPacketQueue();
+    AVPacketQueue(size_t cap);
     ~AVPacketQueue();
     int push(std::shared_ptr<Packet> pkt);
     std::shared_ptr<Packet> pop(int timeout = 0);
@@ -39,7 +39,7 @@ public:
     void clear();
 private:
     void release();
-    Queue<std::shared_ptr<Packet>> q_;
+    std::unique_ptr<Queue<std::shared_ptr<Packet>>> q_;
 };
 
 

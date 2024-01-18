@@ -30,7 +30,7 @@ struct Frame {
 
 class FrameQueue {
 public:
-    FrameQueue();
+    FrameQueue(size_t cap);
     ~FrameQueue();
     int push(const std::shared_ptr<Frame>& frame);
     int push(std::shared_ptr<Frame>&& frame);
@@ -41,8 +41,7 @@ public:
     void clear();
 private:
     void release();
-    Queue<std::shared_ptr<Frame>> q;
-
+    std::unique_ptr<Queue<std::shared_ptr<Frame>>> q;
 };
 
 

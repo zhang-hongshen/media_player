@@ -5,7 +5,8 @@
 
 #include "frame_queue.h"
 
-FrameQueue::FrameQueue() {
+FrameQueue::FrameQueue(size_t cap) {
+    q = std::make_unique<Queue<std::shared_ptr<Frame>>>(cap);
 }
 
 
@@ -14,30 +15,29 @@ FrameQueue::~FrameQueue() {
 }
 
 int FrameQueue::push(const std::shared_ptr<Frame>& frame) {
-
-    return q.push(frame);
+    return q->push(frame);
 }
 
 int FrameQueue::push(std::shared_ptr<Frame>&& frame) {
 
-    return q.push(frame);
+    return q->push(frame);
 }
 
 std::shared_ptr<Frame> FrameQueue::pop(int timeout) {
     std::shared_ptr<Frame> res = nullptr;
-    q.pop(res, timeout);
+    q->pop(res, timeout);
     return res;
 }
 
 std::shared_ptr<Frame> FrameQueue::front() {
     std::shared_ptr<Frame> res = nullptr;
-    q.front(res);
+    q->front(res);
     return res;
 }
 
 
 size_t FrameQueue::size() {
-    return q.size();
+    return q->size();
 }
 
 void FrameQueue::clear() {
@@ -47,8 +47,8 @@ void FrameQueue::clear() {
 void FrameQueue::release() {
     while (true) {
         std::shared_ptr<Frame> frame = nullptr;
-        int ret = q.pop(frame, 1);
-        if(-1 == ret) {
+        int ret = q->pop(frame, 5);
+        if(0 != ret) {
             break;
         }
     }

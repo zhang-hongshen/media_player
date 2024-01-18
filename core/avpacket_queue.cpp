@@ -5,7 +5,8 @@
 
 #include "avpacket_queue.h"
 
-AVPacketQueue::AVPacketQueue() {
+AVPacketQueue::AVPacketQueue(size_t cap) {
+    q_ = std::make_unique<Queue<std::shared_ptr<Packet>>>(cap);
 }
 
 AVPacketQueue::~AVPacketQueue() {
@@ -20,24 +21,24 @@ AVPacketQueue::~AVPacketQueue() {
  * @return 0 if success, negative if failed
  */
 int AVPacketQueue::push(std::shared_ptr<Packet> pkt) {
-    return q_.push(pkt);
+    return q_->push(pkt);
 }
 
 std::shared_ptr<Packet> AVPacketQueue::pop(int timeout) {
     std::shared_ptr<Packet> res = nullptr;
-    q_.pop(res, timeout);
+    q_->pop(res, timeout);
     return res;
 }
 
 std::shared_ptr<Packet> AVPacketQueue::front() {
     std::shared_ptr<Packet> res = nullptr;
-    int ret = q_.front(res);
+    int ret = q_->front(res);
     return res;
 }
 
 
 size_t AVPacketQueue::size() {
-    return q_.size();
+    return q_->size();
 }
 
 void AVPacketQueue::clear() {
@@ -47,8 +48,8 @@ void AVPacketQueue::clear() {
 void AVPacketQueue::release() {
     while (true) {
         std::shared_ptr<Packet> pkt = nullptr;
-        int ret = q_.pop(pkt, 10);
-        if(-1 == ret) {
+        int ret = q_->pop(pkt, 10);
+        if(0 != ret) {
             break;
         }
     }

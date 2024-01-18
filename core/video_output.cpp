@@ -45,7 +45,7 @@ int VideoOutput::Init() {
         window_flags |= SDL_WINDOW_OPENGL;
     }
 
-    window = SDL_CreateWindow("ffmpeg player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    window = SDL_CreateWindow("Media Player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                               param_.width, param_.height,  window_flags);
     if(!window) {
         spdlog::error("SDL_CreateWindow error, {}\n" ,SDL_GetError());
