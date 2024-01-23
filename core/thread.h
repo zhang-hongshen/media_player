@@ -10,18 +10,20 @@
 
 class Thread {
 public:
-    Thread();
-    virtual ~Thread();
+    template< class Function, class... Args >
+    explicit Thread( Function&& f, Args&&... args );
+    ~Thread() noexcept;
     int Stop();
-protected:
-    virtual int Run() = 0;
-
-public:
-    constexpr static int EXIT = 1;
-protected:
+    int Aborted();
+    void Abort();
+private:
     int abort_ = 0;
     std::thread *thread = nullptr;
 };
 
+template< class Function, class... Args >
+Thread::Thread(Function && f, Args&&... args) {
+    thread = new std::thread(f, std::forward<Args>(args)...);
+}
 
 #endif //SIMPLEST_MEDIA_PLAYER_THREAD_H

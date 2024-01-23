@@ -1,21 +1,14 @@
 //
 // Created by 张鸿燊 on 8/1/2024.
 //
-#include <spdlog/spdlog.h>
-
 #include "thread.h"
 
-Thread::Thread(){
-    spdlog::info("Thread::Thread() \n");
-}
-
 Thread::~Thread(){
-    spdlog::info("Thread::~Thread() \n");
     Thread::Stop();
 }
 
 int Thread::Stop() {
-    while(Thread::EXIT != abort_);
+    abort_ = 1;
     if(thread) {
         if(thread->joinable()) {
             thread->join();
@@ -24,5 +17,12 @@ int Thread::Stop() {
         thread = nullptr;
     }
     return 0;
+}
+void Thread::Abort() {
+    abort_ = 1;
+}
+
+int Thread::Aborted() {
+    return abort_;
 }
 

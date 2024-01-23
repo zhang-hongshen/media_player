@@ -5,8 +5,8 @@
 
 #include "decoder.h"
 
-Decoder::Decoder(const std::shared_ptr<AVPacketQueue>& pkt_queue,
-                 const std::shared_ptr<FrameQueue>& frame_queue, int* serial):
+Decoder::Decoder(const std::shared_ptr<Queue<std::shared_ptr<Packet>>> &pkt_queue,
+                 const std::shared_ptr<Queue<std::shared_ptr<Frame>>> &frame_queue, int* serial):
         pkt_queue_(pkt_queue), frame_queue_(frame_queue), serial_(serial) {
 
 }
@@ -45,7 +45,7 @@ int Decoder::Init(AVCodecParameters *param) {
 }
 
 int Decoder::Start() {
-    thread = new std::thread(&Decoder::Run, this);
+    thread = std::make_unique<Thread>(&Decoder::Run, this);
     if(!thread) {
         spdlog::error("new thread error\n");
         return -1;
@@ -54,12 +54,12 @@ int Decoder::Start() {
 }
 
 int Decoder::Stop() {
-    return Thread::Stop();
+    return thread->Stop();
 }
 
 int Decoder::Run() {
     AVFrame* av_frame = av_frame_alloc();
-    while(Thread::EXIT != abort_) {
+    while(!thread->Aborted()) {
         auto pkt = pkt_queue_->front();
         if(!pkt) {
             continue;
@@ -77,7 +77,7 @@ int Decoder::Run() {
             ret = avcodec_receive_frame(codec_ctx_, av_frame);
             if(0 != ret) {
                 if(AVERROR_EOF == ret) {
-                    abort_ = Thread::EXIT;
+                    thread->Abort();
                 }
                 spdlog::warn("avcodec_receive_frame error, {}\n", av_err2str(ret));
                 break;
@@ -87,7 +87,6 @@ int Decoder::Run() {
     }
     av_frame_free(&av_frame);
     spdlog::info("Decoder::run() finished \n");
-    abort_ = Thread::EXIT;
     return 0;
 }
 

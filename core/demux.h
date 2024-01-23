@@ -11,26 +11,27 @@ extern "C" {
 }
 
 #include "thread.h"
-#include "avpacket_queue.h"
+#include "queue.h"
 #include "mp_state.h"
 #include "decoder.h"
 
-class Demux : public Thread {
+class Demux {
 public:
-    Demux(const std::shared_ptr<AVPacketQueue>& video_pkt_queue,
-          const std::shared_ptr<AVPacketQueue>& audio_pkt_queue,
+    Demux(const std::shared_ptr<Queue<std::shared_ptr<Packet>>> &video_pkt_queue,
+          const std::shared_ptr<Queue<std::shared_ptr<Packet>>> & audio_pkt_queue,
           const std::shared_ptr<MPState>& mp_state, Decoder *video_decoder, Decoder *audio_decoer);
-    ~Demux() override;
+    ~Demux() noexcept;
     int Init(const char *url);
     int Start();
     int Stop();
-    AVStream* VideoStream();
-    AVStream* AudioStream();
-protected:
-    int Run() override;
+    AVStream* VideoStream() const;
+    AVStream* AudioStream() const;
 private:
-    std::shared_ptr<AVPacketQueue> video_pkt_queue_ = nullptr;
-    std::shared_ptr<AVPacketQueue> audio_pkt_queue_ = nullptr;
+    int Run();
+private:
+    std::unique_ptr<Thread> thread = nullptr;
+    std::shared_ptr<Queue<std::shared_ptr<Packet>>> video_pkt_queue_ = nullptr;
+    std::shared_ptr<Queue<std::shared_ptr<Packet>>> audio_pkt_queue_ = nullptr;
     std::shared_ptr<MPState> mp_state_ = nullptr;
     Decoder *video_decoder_, *audio_decoder_;
 

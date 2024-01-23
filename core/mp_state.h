@@ -11,18 +11,18 @@ extern "C" {
 #include <SDL.h>
 };
 
-#include "avpacket_queue.h"
-#include "frame_queue.h"
+#include "packet.h"
+#include "frame.h"
 #include "avsync.h"
+
 class MPState {
 public:
     MPState();
-    ~MPState();
+    ~MPState() noexcept;
     void SetClock(double pts);
     double GetClock();
     void TogglePaused();
     void ToggleMuted();
-    void UpdateVolume(int step = DEFAULT_VOLUME_STEP);
     void NextPlayBackSpeed();
     void PrePlayBackSpeed();
     double GetPlayBackSpeed();

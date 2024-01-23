@@ -6,9 +6,9 @@
 
 #include "demux.h"
 
-Demux::Demux(const std::shared_ptr<AVPacketQueue>& video_pkt_queue,
-             const std::shared_ptr<AVPacketQueue>& audio_pkt_queue,
-             const std::shared_ptr<MPState>& mp_state, Decoder *video_decoder, Decoder *audio_decoer)
+Demux::Demux(const std::shared_ptr<Queue<std::shared_ptr<Packet>>> &video_pkt_queue,
+             const std::shared_ptr<Queue<std::shared_ptr<Packet>>> &audio_pkt_queue,
+             const std::shared_ptr<MPState> &mp_state, Decoder *video_decoder, Decoder *audio_decoer)
     : video_pkt_queue_(video_pkt_queue), audio_pkt_queue_(audio_pkt_queue), mp_state_(mp_state),
       video_decoder_(video_decoder), audio_decoder_(audio_decoer){
     spdlog::info("Demux::Demux()\n");
@@ -55,12 +55,11 @@ int Demux::Init(const char *url) {
     }
 
     spdlog::info("Demux::init() finished\n");
-
     return 0;
 }
 
 int Demux::Start() {
-    thread = new std::thread(&Demux::Run, this);
+    thread = std::make_unique<Thread>(&Demux::Run, this);
     if(!thread) {
         spdlog::error("new thread error\n");
         return -1;
@@ -69,13 +68,13 @@ int Demux::Start() {
 }
 
 int Demux::Stop() {
-    return Thread::Stop();
+    return thread->Stop();
 }
 
 int Demux::Run() {
     AVPacket* pkt = av_packet_alloc();
     int ret;
-    while (Thread::EXIT != abort_) {
+    while (!thread->Aborted()) {
         if(mp_state_->need_seek) {
             ret = avformat_seek_file(format_ctx_, -1,  std::numeric_limits<int64_t>::min(),
                                      mp_state_->seek_pts * 1000, std::numeric_limits<int64_t>::max(), 0);
@@ -104,7 +103,6 @@ int Demux::Run() {
             }
             if (pkt->stream_index == video_stream_index_) {
                 video_pkt_queue_->push(std::make_shared<Packet>(pkt));
-
             } else if(pkt->stream_index == audio_stream_index_) {
                 audio_pkt_queue_->push(std::make_shared<Packet>(pkt));
             }
@@ -113,11 +111,10 @@ int Demux::Run() {
     }
     av_packet_free(&pkt);
     spdlog::info("Demux::run() finished!\n");
-    abort_ = Thread::EXIT;
     return 0;
 }
 
-AVStream* Demux::VideoStream() {
+AVStream* Demux::VideoStream() const {
     AVStream *stream = nullptr;
     if(video_stream_index_ >= 0) {
        stream = format_ctx_->streams[video_stream_index_];
@@ -125,7 +122,7 @@ AVStream* Demux::VideoStream() {
     return stream;
 }
 
-AVStream* Demux::AudioStream() {
+AVStream* Demux::AudioStream() const {
     AVStream *stream = nullptr;
     if(audio_stream_index_ >= 0) {
         stream = format_ctx_->streams[audio_stream_index_];

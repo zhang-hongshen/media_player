@@ -5,7 +5,7 @@
 
 #include "video_output.h"
 
-VideoOutput::VideoOutput(const std::shared_ptr<FrameQueue>& q, const VideoParam &param,
+VideoOutput::VideoOutput(const std::shared_ptr<Queue<std::shared_ptr<Frame>>> & q, const VideoParam &param,
                          const std::shared_ptr<MPState>& mp_state):
  frame_queue_(q), param_(param), mp_state_(mp_state){
 
@@ -68,7 +68,9 @@ int VideoOutput::Init() {
 void VideoOutput::EventLoop() {
     SDL_Event event;
     while(true) {
-        RefreshLoopWaitEvent(&event);
+        if(RefreshLoopWaitEvent(&event) < 0) {
+            return;
+        }
         switch (event.type) {
             case SDL_KEYDOWN:
                 switch (event.key.keysym.sym) {
@@ -100,22 +102,20 @@ void VideoOutput::EventLoop() {
                         break;
                     case SDLK_q:
                         Realease();
-                        SDL_Quit();
                         break;
                 }
                 break;
             case SDL_QUIT:
-                SDL_Quit();
+                Realease();
                 break;
         }
     }
 }
 
-
-void VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
+int VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
     double remaining_time = 0;
     SDL_PumpEvents();
-    while(!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT)) {
+    while (!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT)) {
         if(remaining_time > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds (int64_t(remaining_time * 1000)));
         }
@@ -134,12 +134,13 @@ void VideoOutput::RefreshLoopWaitEvent(SDL_Event *event) {
             int ret = Refresh(av_frame);
             if(0 != ret) {
                 spdlog::error("Refresh error\n");
-                return;
+                return -1;
             }
             frame_queue_->pop(10);
         }
         SDL_PumpEvents();
     }
+    return 0;
 }
 
 bool VideoOutput::CheckIfNeedRefresh(const std::shared_ptr<Frame>& frame) const {

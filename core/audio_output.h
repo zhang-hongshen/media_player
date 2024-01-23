@@ -10,12 +10,11 @@ extern "C" {
 #include <SDL.h>
 }
 
-#include "frame_queue.h"
-#include "avsync.h"
+#include "frame.h"
+#include "queue.h"
 #include "mp_state.h"
 
 struct AudioParam {
-
     AVChannelLayout channel_layout;
     AVSampleFormat format;
     int sample_rate;
@@ -26,9 +25,9 @@ struct AudioParam {
 
 class AudioOutput {
 public:
-    AudioOutput(const std::shared_ptr<FrameQueue>& q, const AudioParam &param,
+    AudioOutput(const std::shared_ptr<Queue<std::shared_ptr<Frame>>>& q, const AudioParam &param,
                 const std::shared_ptr<MPState>& mp_state);
-    ~AudioOutput();
+    ~AudioOutput() noexcept;
     int Init();
 private:
     static void FillAudioPCM(void *userdata, Uint8 * stream, int len);
@@ -37,14 +36,14 @@ private:
     int Resample(const AVFrame* frame);
     void SetSyncClock();
 private:
-    std::shared_ptr<FrameQueue> frame_queue_ = nullptr;
-    AudioParam src, dst;
+    std::shared_ptr<Queue<std::shared_ptr<Frame>>> frame_queue_ = nullptr;
     std::shared_ptr<MPState> mp_state_ = nullptr;
-    enum {
-        UNPAUSE = 0,
-        PAUSE = 1
-    };
+    AudioParam in, out;
+
+    // resample
     SwrContext *swr_ctx_ = nullptr;
+    int playback_sample_rate = 0;
+
     uint8_t *buf = nullptr;
     int buf_size = 0, buf_index = 0;
     uint8_t *buf1 = nullptr;

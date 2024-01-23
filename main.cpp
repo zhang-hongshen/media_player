@@ -1,7 +1,8 @@
 #include <spdlog/spdlog.h>
 
-#include "core/avpacket_queue.h"
-#include "core/frame_queue.h"
+#include "core/packet.h"
+#include "core/frame.h"
+#include "core/queue.h"
 #include "core/demux.h"
 #include "core/decoder.h"
 #include "core/video_output.h"
@@ -21,10 +22,10 @@ int main(int argc, char* argv[]) {
      * Demux
      */
     std::shared_ptr<MPState> mp_state = std::make_shared<MPState>();
-    std::shared_ptr<AVPacketQueue> video_pkt_queue = std::make_shared<AVPacketQueue>(512);
-    std::shared_ptr<AVPacketQueue> audio_pkt_queue = std::make_shared<AVPacketQueue>(512);
-    std::shared_ptr<FrameQueue> video_frame_queue = std::make_shared<FrameQueue>(512);
-    std::shared_ptr<FrameQueue> audio_frame_queue = std::make_shared<FrameQueue>(512);
+    std::shared_ptr<Queue<std::shared_ptr<Packet>>> video_pkt_queue = std::make_shared<Queue<std::shared_ptr<Packet>>>(512);
+    std::shared_ptr<Queue<std::shared_ptr<Packet>>> audio_pkt_queue = std::make_shared<Queue<std::shared_ptr<Packet>>>(512);
+    std::shared_ptr<Queue<std::shared_ptr<Frame>>> video_frame_queue = std::make_shared<Queue<std::shared_ptr<Frame>>>(512);
+    std::shared_ptr<Queue<std::shared_ptr<Frame>>> audio_frame_queue = std::make_shared<Queue<std::shared_ptr<Frame>>>(512);
 
     Decoder video_decoder(video_pkt_queue, video_frame_queue, &mp_state->serial);
     Decoder audio_decoder(audio_pkt_queue, audio_frame_queue, &mp_state->serial);
@@ -101,6 +102,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     video.EventLoop();
+    SDL_Quit();
 
     /**
      * Waiting for decoding
@@ -120,7 +122,6 @@ int main(int argc, char* argv[]) {
         spdlog::error("audio_decoder stop error\n");
         return -1;
     }
-
     return 0;
 }
 

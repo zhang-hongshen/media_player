@@ -9,7 +9,8 @@ extern "C"{
 #include <SDL.h>
 };
 
-#include "frame_queue.h"
+#include "queue.h"
+#include "frame.h"
 #include "avsync.h"
 #include "mp_state.h"
 
@@ -21,18 +22,18 @@ struct VideoParam {
 
 class VideoOutput {
 public:
-    VideoOutput(const std::shared_ptr<FrameQueue>& q, const VideoParam &param,
+    VideoOutput(const std::shared_ptr<Queue<std::shared_ptr<Frame>>> & q, const VideoParam &param,
                 const std::shared_ptr<MPState>& mp_state);
-    ~VideoOutput();
+    ~VideoOutput() noexcept;
     int Init();
     void EventLoop();
 private:
-    void RefreshLoopWaitEvent(SDL_Event *event);
+    int RefreshLoopWaitEvent(SDL_Event *event);
     bool CheckIfNeedRefresh(const std::shared_ptr<Frame>& frame) const;
     int Refresh(const AVFrame* frame);
     void Realease();
 private:
-    std::shared_ptr<FrameQueue> frame_queue_ = nullptr;
+    std::shared_ptr<Queue<std::shared_ptr<Frame>>> frame_queue_ = nullptr;
     VideoParam param_;
     std::shared_ptr<MPState> mp_state_ = nullptr;
 

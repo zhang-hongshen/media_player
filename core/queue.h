@@ -14,7 +14,9 @@ template<typename T>
 class Queue {
 public:
     Queue(size_t cap = CAP_NOT_SET): cap_(cap)  {};
-    ~Queue() {};
+    ~Queue() noexcept {
+        release();
+    };
 
     // only allow one thread to push
     int push(const T& val) {
@@ -36,12 +38,12 @@ public:
                 return q_.size() < cap_;
             });
         }
-        q_.push(val);
+        q_.push(std::move(val));
         r_cond_.notify_one();
         return 0;
     }
 
-    int pop(T &val, int timeout = 0) {
+    int pop(int timeout = 0) {
         std::unique_lock<std::mutex> lock(lock_);
         if(q_.empty()) {
             bool ret = r_cond_.wait_for(lock, std::chrono::milliseconds(timeout), [&]{
@@ -51,24 +53,34 @@ public:
                 return -1;
             }
         }
-
-        val = q_.front();
         q_.pop();
         w_cond_.notify_one();
         return 0;
     }
 
-    int front(T &val) {
-        std::lock_guard<std::mutex> lock(lock_);
+    T front() {
+        std::unique_lock<std::mutex> lock(lock_);
         if(q_.empty()) {
-            return -1;
+            return nullptr;
         }
-        val = q_.front();
-        return 0;
+        return q_.front();
     }
 
     size_t size() {
         return q_.size();
+    }
+
+    void clear() {
+        release();
+    }
+private:
+    void release() {
+        while (true) {
+            int ret = pop(10);
+            if(0 != ret) {
+                break;
+            }
+        }
     }
 
 public:

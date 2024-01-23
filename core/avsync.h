@@ -14,7 +14,7 @@ public:
     };
 public:
     AVSync(SyncType type = AUDIO);
-    ~AVSync();
+    ~AVSync() noexcept;
     void SetClock(double pts, double time);
     void SetClock(double pts);
     double GetClock() const;
